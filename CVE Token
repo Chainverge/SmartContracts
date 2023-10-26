@@ -23,7 +23,7 @@ contract TaxableToken is ERC20Burnable, Ownable {
     }
 
     function setRates(uint256 _transferTaxRate, uint256 _burnRate, uint256 _feeRate) external onlyOwner {
-        require(_transferTaxRate <= 1000 && _burnRate + _feeRate == 10000, "Invalid rates");  // Ensures the sum of burnRate and feeRate is 100%
+        require(_transferTaxRate <= 100 && _burnRate + _feeRate == 10000, "Invalid rates");  // Ensures the sum of burnRate and feeRate is 100%
         transferTaxRate = _transferTaxRate;
         burnRate = _burnRate;
         feeRate = _feeRate;
