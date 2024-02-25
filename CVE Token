@@ -707,14 +707,15 @@ abstract contract ERC20Burnable is Context, ERC20 {
     }
 }
 
-contract CVEToken is ERC20Burnable, Ownable {
+contract ChainvergeToken is ERC20Burnable, Ownable {
     uint256 public transferTaxRate = 100; // Initially set to 1%
     uint256 public burnRate = 5000; // Initially set to 50% of the tax, in basis points
     uint256 public feeRate = 5000; // Initially set to 50% of the tax, in basis points
     address public feeAddress;
     mapping(address => bool) public isWhitelisted;
+    mapping(address => bool) public isMarketPair;
 
-   constructor(address _feeAddress, uint totalSupply) ERC20("CVEToken", "CVE") Ownable(msg.sender) {
+   constructor(address _feeAddress, uint totalSupply) ERC20("Chainverge", "CVE") Ownable(msg.sender) {
         require(_feeAddress != address(0), "Invalid fee address");
         feeAddress = _feeAddress;
         _mint(_msgSender(), totalSupply * 10 ** decimals());
@@ -722,6 +723,10 @@ contract CVEToken is ERC20Burnable, Ownable {
         isWhitelisted[_feeAddress] = true;
     }
 
+    function setMarketPair(address pair, bool enabled) public onlyOwner {
+        isMarketPair[pair] = enabled;
+    }
+    
     function setRates(uint256 _transferTaxRate, uint256 _burnRate, uint256 _feeRate) external onlyOwner {
         require(_transferTaxRate <= 100 && _burnRate + _feeRate == 10000, "Invalid rates");  // Ensures the sum of burnRate and feeRate is 100%
         transferTaxRate = _transferTaxRate;
@@ -738,22 +743,37 @@ contract CVEToken is ERC20Burnable, Ownable {
         isWhitelisted[_address] = _whitelisted;
     }
 
-    //NOTE: mark OZ's _transfer function as virtual
+
     function _transfer(address sender, address recipient, uint256 amount) internal virtual override {
+        // Checking if it's a buy (from pair) or sell (to pair) operation
+        bool isBuy = isMarketPair[sender];
+        bool isSell = isMarketPair[recipient];
+
+        // early return for WL
         if (isWhitelisted[sender] || isWhitelisted[recipient]) {
             super._transfer(sender, recipient, amount);
-
-        } else {
+            return;
+        }
+        // AMM pair interaction
+        if (isBuy || isSell) {
+            // Apply fees only on buy or sell operations
             uint256 taxAmount = amount * transferTaxRate / 10000;
             uint256 burnAmount = taxAmount * burnRate / 10000;
-            uint256 feeAmount = taxAmount - burnRate;
+            uint256 feeAmount = taxAmount - burnAmount;
 
-            //NOTE: transfer fee from sender to feeAddress
+            // Transfer fee from sender to feeAddress
             super._transfer(sender, feeAddress, feeAmount);
-            //NOTE: transfer amount - tax from sender to recipient
+
+            // Transfer net amount (after tax) from sender to recipient
             super._transfer(sender, recipient, amount - taxAmount);
-            //NOTE: burn - must be done via _burn as transfer reverts for addres(0)
+
+            // Burn the calculated burnAmount
             _burn(sender, burnAmount);
+            return;
+        } else {
+            // No fees for other types of transfers
+            super._transfer(sender, recipient, amount);
+            return;
         }
     }
 
